@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: Threat Post Detection Tool
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Taeksoo
+    family-names: Kwon
+    orcid: 'https://orcid.org/0009-0004-5775-2550'
+    email: henryk@research.algorix.io
+    affiliation: Algorix LLC
+  - given-names: Connor
+    family-names: Kim
+    affiliation: Centennial High School
+    orcid: 'https://orcid.org/0009-0005-7375-5492'
+repository-code: 'https://github.com/AIGGEZ/threat-post-detection-gpt'
+abstract: >-
+  JavaScript tool using HTTP requests & GPT models to spot
+  threats in online content.
+license: MIT
