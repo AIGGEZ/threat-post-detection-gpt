@@ -48,9 +48,12 @@ const checkAnswer = async (data) => {
             rl.question(`${data}: `, resolve)
         });
 
-        console.log(ans);
+        if (ans.toLowerCase().indexOf("t") !== -1) {
+            console.log("Threat!");
+            return true;
+        }
 
-        if (ans.toLowerCase().indexOf("t") !== -1) return true;
+        console.log("Safe!");
         return false;
     }
 
@@ -109,6 +112,7 @@ const test = async (func) => {
         }
 
         ans.push(res);
+        console.log(`${i + 1}/${s.length}`);
     }
 
     return compare(s.map(v => v.threat), ans);
@@ -128,7 +132,7 @@ const conduct = async () => {
     for (let i = 0; i < 25; i++) {
         let res = await conduct();
         results.push(res);
-        console.log(i, res);
+        console.log(i + 1, res);
     }
 
     fs.writeFileSync('./results.csv', "GPT-3.5 Non-threats Judged Correctly,GPT-3.5 Threats Judged Correctly,GPT-4 Non-threats Judged Correctly,GPT-4 Threats Judged Correctly,PaLM Non-threats Judged Correctly,PaLM Threats Judged Correctly,\n" + results.map(v => `${v.g3.safe_correct},${v.g3.threat_correct},${v.g4.safe_correct},${v.g4.threat_correct},${v.b.safe_correct},${v.b.threat_correct}\n`).join('\n'));
