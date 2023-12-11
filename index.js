@@ -1,8 +1,16 @@
-const { OpenAI } = require('openai');
-const { API_KEY } = require('./config.json');
-const fs = require('fs');
+import OpenAI from 'openai';
+import fs from 'fs';
+import PaLM from 'palm-api';
+import readline from 'readline';
+import config from './config.js';
 
-const openai = new OpenAI({ apiKey: API_KEY });
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+const openai = new OpenAI({ apiKey: config.API_KEY });
+const palm = new PaLM(config.PALM_KEY);
 
 // Load post titles
 const loadData = () => {
@@ -16,7 +24,7 @@ const loadData = () => {
 const shuffle = () => {
     let { safe, threat } = loadData();
 
-    let shuf = [...(safe.sort(() => Math.random() - Math.random()).slice(0, 90).map(v => ({ threat: false, data: v }))), ...(threat.map(v => ({ threat: true, data: v })))];
+    let shuf = [...(safe.sort(() => Math.random() - Math.random()).slice(0, 40).map(v => ({ threat: false, data: v }))), ...(threat.sort(() => Math.random() - Math.random()).slice(0, 10).map(v => ({ threat: true, data: v })))];
     shuf.sort(() => Math.random() - Math.random());
 
     return shuf;
@@ -34,17 +42,22 @@ const compare = (expected, actual) => {
     return { safe_correct, threat_correct };
 }
 
-let basePrompt = `Beda is a content moderator working for a korean online community website. Beda is given with 100 titles of posts in Korean to review. Beda individually judges each post as either safe or unsafe based on whether if it contains content of public threat. Beda defines public threat as advance notices that perpetrators upload before committing terror to public places. Beda must be considerate to keep the public safe. Beda must report the judgements in a JSON array format of length 100 where public threat is marked as true and safe posts are marked as false, like this: [true, false, true, true, ...]. Beda should not include any other text in the response else than the JSON parsable array. You are Beda.`;
+const checkAnswer = async (data) => {
+    if (data.split(" ").length > 1) {
+        let ans = await new Promise(resolve => {
+            rl.question(`${data}: `, resolve)
+        });
 
-// If the text starts with ```json, remove it as well as the last ``` 
-const cleanText = (text) => {
-    if (text.startsWith('```json')) {
-        text = text.replace('```json', '');
-        text = text.substring(0, text.lastIndexOf('```'));
+        console.log(ans);
+
+        if (ans.toLowerCase().indexOf("t") !== -1) return true;
+        return false;
     }
 
-    return text;
+    return data.toLowerCase().indexOf('threat') !== -1;
 }
+
+let basePrompt = `Beda is a content moderator working for a Korean online community website. Beda is given a post title in Korean to review. Beda judges the post as either safe or unsafe based on whether it contains content posing a public threat. Beda defines a public threat as advance notices that perpetrators upload before committing terror in public places. Beda must be considerate to keep the public safe. Beda can only reply in either 'threat' or 'safe', based on whether the text is a public threat or not. Beda does not translate the text into other languages. Beda should only reply in one word. Beda does not add any description about the message. You are Beda. You must act just like Beda. You are not allowed to reply in any other way than 'threat' or 'safe'. You are not allowed to reply in more than one word. You are not allowed to add any description about the message.`;
 
 // gpt-3.5-turbo-1106
 const testModel1 = async (data) => {
@@ -52,11 +65,11 @@ const testModel1 = async (data) => {
         model: 'gpt-3.5-turbo-1106',
         messages: [
             { role: "system", content: basePrompt },
-            { role: "user", content: data.map((v, i) => `${i + 1}. ${v.data}`).join('\n') }
+            { role: "user", content: "Post Title: " + data }
         ]
     });
 
-    return compare(data.map(v => v.threat), JSON.parse(cleanText(res.choices[0].message.content)));
+    return checkAnswer(res.choices[0].message.content)
 }
 
 // gpt-4
@@ -65,46 +78,58 @@ const testModel2 = async (data) => {
         model: 'gpt-4',
         messages: [
             { role: "system", content: basePrompt },
-            { role: "user", content: data.map((v, i) => `${i + 1}. ${v}`).join('\n') }
+            { role: "user", content: "Post Title: " + data }
         ]
     });
 
-    return compare(data.map(v => v.threat), JSON.parse(cleanText(res.choices[0].message.content)));
+    return checkAnswer(res.choices[0].message.content)
 }
 
-// text-moderation-latest
+// chat-bison
 const testModel3 = async (data) => {
-    let ht = [], hrt = [], v = [];
+    let res = await palm.ask(basePrompt + "\n\n" + data);
 
+    return checkAnswer(res)
+}
 
-    for (let d of data) {
-        let r = await openai.moderations.create({
-            model: 'text-moderation-latest',
-            input: d.data
-        })
+const test = async (func) => {
+    let s = shuffle();
+    let ans = [];
 
-        ht.push(r.results[0].categories['hate/threatening']);
-        hrt.push(r.results[0].categories['harassment/threatening']);
-        v.push(r.results[0].categories['violence']);
+    for (let i = 0; i < s.length; i++) {
+        let ss = s[i].data.replace(/(\r\n|\n|\r)/gm, "");
+        let res = null;
+
+        while (res === null) {
+            try {
+                res = await func(ss);
+            } catch (e) {
+                console.log(e);
+            }
+        }
+
+        ans.push(res);
     }
 
-    ht = compare(data.map(v => v.threat), ht);
-    hrt = compare(data.map(v => v.threat), hrt);
-    v = compare(data.map(v => v.threat), v);
-
-    return { ht, hrt, v };
+    return compare(s.map(v => v.threat), ans);
 }
 
 const conduct = async () => {
-    let g3 = await testModel1(shuffle());
-    let g4 = await testModel2(shuffle());
-    let { hrt, ht, v } = await testModel3(shuffle());
+    let g3 = await test(testModel1);
+    let g4 = await test(testModel2);
+    let b = await test(testModel3);
 
-    console.log(g3, g4, hrt, ht, v);
+    return { g3, g4, b };
 }
 
 (async () => {
-    for (let i = 0; i < 5; i++) {
-        await conduct();
+    let results = [];
+
+    for (let i = 0; i < 25; i++) {
+        let res = await conduct();
+        results.push(res);
+        console.log(i, res);
     }
-})();
+
+    fs.writeFileSync('./results.csv', "GPT-3.5 Non-threats Judged Correctly,GPT-3.5 Threats Judged Correctly,GPT-4 Non-threats Judged Correctly,GPT-4 Threats Judged Correctly,PaLM Non-threats Judged Correctly,PaLM Threats Judged Correctly,\n" + results.map(v => `${v.g3.safe_correct},${v.g3.threat_correct},${v.g4.safe_correct},${v.g4.threat_correct},${v.b.safe_correct},${v.b.threat_correct}\n`).join('\n'));
+})()

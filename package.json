@@ -10,6 +10,8 @@
     "author": "",
     "license": "ISC",
     "dependencies": {
-        "openai": "^4.20.1"
-    }
+        "openai": "^4.20.1",
+        "palm-api": "^1.1.1"
+    },
+    "type": "module"
 }
